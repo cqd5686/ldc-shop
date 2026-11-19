@@ -210,6 +210,9 @@ def browser_account(account):
             try:
                 tab = browser.new_tab()
                 tab.get(f"{LDO}/")
+                # Let the browser finish loading the signed-in forum before using its session.
+                if not tab.ele("@id=current-user", timeout=12):
+                    raise AccountUnavailable
                 current = browser_request(tab, "/session/current.json")
                 if current["status"] != 200 or not (current["payload"] or {}).get("current_user"):
                     raise AccountUnavailable
