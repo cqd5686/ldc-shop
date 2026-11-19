@@ -2,6 +2,7 @@ import { db } from "@/lib/db"
 import { cards, settings } from "@/lib/db/schema"
 import { setSetting } from "@/lib/db/queries"
 import { inArray } from "drizzle-orm"
+import { activeInviteProduct } from "@/lib/invite-jobs"
 
 export interface ProductCardApiConfig {
     enabled: boolean
@@ -104,6 +105,9 @@ export async function pullOneCardFromApi(productId: string): Promise<{
     error?: string
     cardKey?: string
 }> {
+    if (productId === await activeInviteProduct()) {
+        return { ok: false, skipped: true, error: "invite_direct_delivery" }
+    }
     const config = await getProductCardApiConfig(productId)
     if (!config.enabled) {
         return { ok: false, skipped: true, error: "api_disabled" }

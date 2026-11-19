@@ -1,5 +1,7 @@
 'use server'
 
+import { activeInviteProduct } from "@/lib/invite-jobs"
+
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { products, cards, reviews, reviewReplies, categories } from "@/lib/db/schema"
@@ -241,6 +243,9 @@ export async function addCards(formData: FormData) {
     await checkAdmin()
 
     const productId = formData.get('product_id') as string
+    if (productId === await activeInviteProduct()) {
+        return { success: false, error: "admin.cards.inviteDirectDelivery" }
+    }
     const rawCards = formData.get('cards') as string
     const hoursRaw = String(formData.get('expires_hours') || '').trim()
     const minutesRaw = String(formData.get('expires_minutes') || '').trim()

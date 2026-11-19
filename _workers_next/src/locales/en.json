@@ -629,6 +629,7 @@
             "expiryMinutes": "Minutes",
             "expiryHint": "Only positive integers. Leave empty for no expiry.",
             "expiryInvalid": "Invalid expiry duration. Use hours and minutes (0-59).",
+            "inviteDirectDelivery": "This product is delivered per order. Open the order details to fulfill it.",
             "available": "Available",
             "used": "Used",
             "noCards": "No cards",

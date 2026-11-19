@@ -629,6 +629,7 @@
             "expiryMinutes": "分钟",
             "expiryHint": "仅支持正整数，留空表示永久有效。",
             "expiryInvalid": "有效期不合法，请填写小时与分钟（分钟 0-59）。",
+            "inviteDirectDelivery": "邀请码商品按订单发货，请在订单详情处理。",
             "available": "可用",
             "used": "已使用",
             "noCards": "暂无卡密",
