@@ -1,11 +1,24 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto"
 import type { D1Database } from "@cloudflare/workers-types"
+import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getD1 } from "@/lib/db"
 import { getSetting, setSetting, recalcProductAggregates, createUserNotification } from "@/lib/db/queries"
 import { sendTelegramMessage } from "@/lib/notifications"
 import { revalidatePath, revalidateTag } from "next/cache"
 
 export const INVITE_PRODUCT_ID = "L_Invite"
+export function getInviteShopOrigin() {
+    try {
+        // Read the deployed binding directly: Next.js can inline NEXT_PUBLIC_ variables during build.
+        const { env } = getCloudflareContext()
+        const value = (env as { NEXT_PUBLIC_APP_URL?: string }).NEXT_PUBLIC_APP_URL
+        if (value) return new URL(value).origin
+    } catch {
+        // Local builds and tests do not have a Worker context.
+    }
+    return "https://shop.5881552.xyz"
+}
+
 const CONFIG_KEY = "invite_jobs_config"
 const DAY_MS = 86_400_000
 const LEASE_MS = 5 * 60_000
@@ -229,7 +242,7 @@ export async function notifyManualInvites() {
             ORDER BY j.alert_after LIMIT 10
         ) RETURNING order_id, reason
     `).bind(nextAttempt, now).all<{ order_id: string, reason: Reason }>()
-    const base = new URL(process.env.NEXT_PUBLIC_APP_URL || "https://shop.5881552.xyz")
+    const base = getInviteShopOrigin()
     await Promise.all(results.map(async ({ order_id, reason }) => {
         const url = new URL(`/admin/orders/${encodeURIComponent(order_id)}`, base)
         const result = await sendTelegramMessage(`L 站邀请码订单待手动发货\n订单号 ${order_id}\n${REASONS[reason]}\n${url}`)
