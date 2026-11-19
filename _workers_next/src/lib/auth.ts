@@ -348,6 +348,7 @@ if (githubClientId && githubClientSecret) {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     providers,
+    session: { maxAge: 365 * 24 * 60 * 60 },
     callbacks: {
         async jwt({ token, user, profile, account }) {
             if (user) {
