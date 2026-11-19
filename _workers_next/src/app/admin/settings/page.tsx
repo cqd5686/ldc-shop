@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { getDashboardStats, getSetting, getAllSettings, getVisitorCount } from "@/lib/db/queries"
 import { isRegistryEnabled } from "@/lib/registry"
 import { AdminSettingsContent } from "@/components/admin/settings-content"
@@ -8,6 +9,7 @@ import { resolveEffectiveShopLogo } from "@/lib/shop-logo"
 import { DEFAULT_THEME_FONT, isThemeFont } from "@/lib/theme-fonts"
 
 export default async function AdminSettingsPage() {
+    await requireAdminPage()
     const cookieStore = await cookies()
     void cookieStore.get('ldc_pending_order')
     unstable_noStore()

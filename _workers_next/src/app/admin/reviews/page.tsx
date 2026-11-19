@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { db } from "@/lib/db"
 import { products, reviews, reviewReplies } from "@/lib/db/schema"
 import { desc, eq, inArray } from "drizzle-orm"
@@ -5,6 +6,7 @@ import { AdminReviewsContent } from "@/components/admin/reviews-content"
 import { Suspense } from "react"
 
 async function ReviewsContent() {
+    await requireAdminPage()
   const rows = await db
     .select({
       id: reviews.id,

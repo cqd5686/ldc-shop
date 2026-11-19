@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { db } from "@/lib/db"
 import { orders, refundRequests } from "@/lib/db/schema"
 import { desc, eq } from "drizzle-orm"
@@ -15,6 +16,7 @@ function isMissingTable(error: any) {
 }
 
 export default async function AdminRefundsPage() {
+    await requireAdminPage()
   unstable_noStore()
   let rows: any[] = []
   try {

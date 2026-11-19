@@ -1,7 +1,9 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { getSetting } from "@/lib/db/queries"
 import { AdminDataContent } from "@/components/admin/export-content"
 
 export default async function AdminDataPage() {
+    await requireAdminPage()
   let shopName: string | null = null
   try {
     shopName = await getSetting("shop_name")

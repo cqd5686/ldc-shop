@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
 import { orders } from "@/lib/db/schema"
@@ -8,6 +9,7 @@ import { unstable_noStore } from "next/cache"
 import { getInviteJob } from "@/lib/invite-jobs"
 
 export default async function AdminOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdminPage()
   unstable_noStore()
   const { id } = await params
   const order = await db.query.orders.findFirst({ where: eq(orders.orderId, id) })

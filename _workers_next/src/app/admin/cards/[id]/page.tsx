@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { db } from "@/lib/db"
 import { cards } from "@/lib/db/schema"
 import { desc, sql } from "drizzle-orm"
@@ -7,6 +8,7 @@ import { CardsContent } from "@/components/admin/cards-content"
 import { getProductCardApiConfig } from "@/lib/card-api"
 
 export default async function CardsPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdminPage()
     const { id } = await params
     const product = await getProductForAdmin(id)
     if (!product) return notFound()

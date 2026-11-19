@@ -1,8 +1,10 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { AnnouncementForm } from "@/components/admin/announcement-form"
 import { getAnnouncementConfig } from "@/actions/settings"
 import { Suspense } from "react"
 
 async function AnnouncementContent() {
+    await requireAdminPage()
     const announcement = await getAnnouncementConfig()
 
     return (

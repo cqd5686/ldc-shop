@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { isAdminUsername } from "@/lib/admin-auth"
 import { db } from "@/lib/db"
 import {
   orders,
@@ -22,13 +23,6 @@ import {
 } from "@/lib/db/schema"
 import { and, desc, eq, or, sql } from "drizzle-orm"
 import { getProducts, normalizeTimestampMs } from "@/lib/db/queries"
-
-function requireAdminUsername(username?: string | null) {
-  const adminUsers = process.env.ADMIN_USERS?.toLowerCase().split(",") || []
-  if (!username || !adminUsers.includes(username.toLowerCase())) {
-    throw new Error("Unauthorized")
-  }
-}
 
 function isMissingTable(error: any) {
   const errorString = JSON.stringify(error)
@@ -91,7 +85,9 @@ function rowToInsertOrIgnore(table: string, row: Record<string, any>): string {
 
 export async function GET(req: Request) {
   const session = await auth()
-  requireAdminUsername(session?.user?.username ?? null)
+  if (!isAdminUsername(session?.user?.username)) {
+    return new Response("Forbidden", { status: 403 })
+  }
 
   const { searchParams } = new URL(req.url)
   const type = (searchParams.get("type") || "").toLowerCase()

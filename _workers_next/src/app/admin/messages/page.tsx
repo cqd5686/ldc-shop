@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { db } from "@/lib/db"
 import { adminMessages, userMessages } from "@/lib/db/schema"
 import { desc } from "drizzle-orm"
@@ -15,6 +16,7 @@ function isMissingTable(error: any) {
 }
 
 export default async function AdminMessagesPage() {
+    await requireAdminPage()
   unstable_noStore()
   let rows: any[] = []
   let inbox: any[] = []

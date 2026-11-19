@@ -1,9 +1,11 @@
+import { requireAdminPage } from "@/lib/admin-page"
 import { getProducts, getSetting, getLiveCardStats } from "@/lib/db/queries"
 import { cookies } from "next/headers"
 import { AdminProductsContent } from "@/components/admin/products-content"
 import { INFINITE_STOCK } from "@/lib/constants"
 
 export default async function AdminPage() {
+    await requireAdminPage()
     await cookies()
     const [products, lowStockThreshold] = await Promise.all([
         getProducts(),
