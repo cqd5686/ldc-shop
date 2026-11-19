@@ -13,7 +13,7 @@ import { CopyButton } from "@/components/copy-button"
 import { ClientDate } from "@/components/client-date"
 import { RefundButton } from "@/components/admin/refund-button"
 import { toast } from "sonner"
-import { markOrderDelivered, markOrderPaid, cancelOrder, updateOrderEmail, deleteOrder } from "@/actions/admin-orders"
+import { markOrderDelivered, markOrderPaid, cancelOrder, updateOrderEmail, deleteOrder, manuallyDeliverInvite } from "@/actions/admin-orders"
 import { getDisplayUsername, getExternalProfileUrl } from "@/lib/user-profile-link"
 
 function statusVariant(status: string | null) {
@@ -32,13 +32,43 @@ export function AdminOrderDetailContent({ order }: { order: any }) {
   const [email, setEmail] = useState(order.email || '')
   const [savingEmail, setSavingEmail] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [inviteLink, setInviteLink] = useState("")
+  const [inviteExpiry, setInviteExpiry] = useState("")
   const actionLock = useRef(false)
 
   const status = order.status || 'pending'
-  const canMarkPaid = status === 'pending'
+  const canMarkPaid = status === 'pending' && !order.inviteJobState
   const canMarkDelivered = status === 'paid' && !!order.cardKey
   const canCancel = status === 'pending'
   const canDelete = true
+  const canManuallyDeliver = status === 'paid' && order.inviteJobState === 'manual'
+
+  const submitInvite = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (actionLock.current) return
+    actionLock.current = true
+    setActionLoading(true)
+    try {
+      const expiry = new Date(inviteExpiry).getTime()
+      if (!Number.isFinite(expiry)) {
+        toast.error(t('admin.orders.invalidInvite'))
+        return
+      }
+      const result = await manuallyDeliverInvite(order.orderId, inviteLink, expiry)
+      if (result !== 'delivered') {
+        toast.error(t(result === 'invalid' ? 'admin.orders.invalidInvite' : 'admin.orders.inviteUnavailable'))
+        router.refresh()
+        return
+      }
+      toast.success(t('common.success'))
+      router.refresh()
+    } catch {
+      toast.error(t('common.error'))
+    } finally {
+      actionLock.current = false
+      setActionLoading(false)
+    }
+  }
 
   const handleStatus = async (action: 'paid' | 'delivered' | 'cancel') => {
     if (actionLock.current) return
@@ -96,6 +126,25 @@ export function AdminOrderDetailContent({ order }: { order: any }) {
           <Link href="/admin/orders">{t('common.back')}</Link>
         </Button>
       </div>
+
+      {canManuallyDeliver && (
+        <Card>
+          <CardHeader><CardTitle>{t('admin.orders.manualInviteDelivery')}</CardTitle></CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={submitInvite}>
+              <div className="space-y-2">
+                <Label htmlFor="invite-link">{t('admin.orders.inviteLink')}</Label>
+                <Input id="invite-link" type="url" required value={inviteLink} onChange={(e) => setInviteLink(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="invite-expiry">{t('admin.orders.inviteExpiry')}</Label>
+                <Input id="invite-expiry" type="datetime-local" required value={inviteExpiry} onChange={(e) => setInviteExpiry(e.target.value)} />
+              </div>
+              <Button type="submit" disabled={actionLoading}>{t('admin.orders.markDelivered')}</Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

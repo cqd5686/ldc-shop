@@ -4,6 +4,7 @@ import { BuyContent } from "@/components/buy-content"
 import { BuyRestricted } from "@/components/buy-restricted"
 import { getProduct, getProductVisibility, getLiveCardStats, getProductVariants, type ProductVariantRow } from "@/lib/db/queries"
 import { INFINITE_STOCK } from "@/lib/constants"
+import { activeInviteProduct } from "@/lib/invite-jobs"
 
 interface BuyPageProps {
     params: Promise<{ id: string }>
@@ -71,6 +72,7 @@ export default async function BuyPage({ params }: BuyPageProps) {
             stockCount={liveAvailable}
             lockedStockCount={liveLocked}
             isLoggedIn={!!session?.user}
+            inviteProductId={await activeInviteProduct()}
             reviews={[]}
             averageRating={Number(product.rating || 0)}
             reviewCount={Number(product.reviewCount || 0)}

@@ -26,6 +26,8 @@ interface Order {
     amount: string
     status: string
     cardKey: string | null
+    inviteOrder?: boolean
+    inviteExpiresAt?: number | null
     payee?: string | null
     createdAt: Date | null
     paidAt: Date | null
@@ -78,7 +80,7 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
 
     const getStatusMessage = (status: string) => {
         switch (status) {
-            case 'paid': return isPayment ? t('payment.paidMessage') : t('order.stockDepleted')
+            case 'paid': return order.inviteOrder ? t('order.invitePendingDelivery') : isPayment ? t('payment.paidMessage') : t('order.stockDepleted')
             case 'cancelled': return t('order.cancelledMessage')
             case 'refunded': return t('order.orderRefunded')
             default: return t('order.waitingPayment')
@@ -87,6 +89,14 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
 
     // Auto-check status if pending
     const router = useRouter()
+
+    useEffect(() => {
+        if (!canViewKey || !order.inviteOrder || order.status !== 'paid') return
+        const interval = setInterval(() => {
+            if (document.visibilityState === 'visible') router.refresh()
+        }, 15000)
+        return () => clearInterval(interval)
+    }, [order.inviteOrder, order.status, canViewKey, router])
 
     // Check status on mount and polling
     useEffect(() => {
@@ -249,6 +259,11 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                                         </div>
                                     </div>
                                 </div>
+                                {order.inviteExpiresAt && (
+                                    <p className="text-sm text-muted-foreground">
+                                        {t('order.inviteExpiresAt')} <ClientDate value={new Date(order.inviteExpiresAt)} format="dateTime" />
+                                    </p>
+                                )}
                                 <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -264,14 +279,14 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                         )
                     ) : (
                         <div className={`flex items-center justify-between gap-3 p-4 rounded-xl border ${order.status === 'paid'
-                            ? (isPayment
+                            ? (isPayment || order.inviteOrder
                                 ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20'
                                 : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20')
                             : 'bg-muted/20 text-muted-foreground border-border/30'
                             }`}>
                             <div className="flex items-center gap-3">
                                 {order.status === 'paid' ? (
-                                    isPayment ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />
+                                    isPayment || order.inviteOrder ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />
                                 ) : (
                                     <Clock className="h-5 w-5" />
                                 )}

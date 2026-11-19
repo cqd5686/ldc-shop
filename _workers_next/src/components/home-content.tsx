@@ -28,6 +28,7 @@ interface Product {
     image: string | null
     category: string | null
     stockCount: number
+    inviteOnDemand?: boolean
     soldCount: number
     isHot?: boolean | null
     rating?: number
@@ -442,7 +443,9 @@ export function HomeContent({
                                                     )}
                                                 </div>
                                                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                                                    <span>{t("common.stock")}: {product.stockCount >= INFINITE_STOCK ? "∞" : product.stockCount}</span>
+                                                    {product.inviteOnDemand
+                                                        ? <span>{t("common.inStock")}</span>
+                                                        : <span>{t("common.stock")}: {product.stockCount >= INFINITE_STOCK ? "∞" : product.stockCount}</span>}
                                                     <span>{t("common.sold")}: {product.soldCount}</span>
                                                 </div>
                                             </div>

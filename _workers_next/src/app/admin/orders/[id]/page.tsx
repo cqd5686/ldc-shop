@@ -5,12 +5,14 @@ import { eq } from "drizzle-orm"
 import { AdminOrderDetailContent } from "@/components/admin/order-detail-content"
 import { getProductVariantLabels } from "@/lib/db/queries"
 import { unstable_noStore } from "next/cache"
+import { getInviteJob } from "@/lib/invite-jobs"
 
 export default async function AdminOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   unstable_noStore()
   const { id } = await params
   const order = await db.query.orders.findFirst({ where: eq(orders.orderId, id) })
   if (!order) return notFound()
+  const inviteJob = await getInviteJob(id, order.productId)
 
   const labels = order.productId ? await getProductVariantLabels([order.productId]) : {}
   const productVariantLabel = order.productId ? labels[order.productId] ?? null : null
@@ -32,6 +34,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
         createdAt: order.createdAt,
         paidAt: order.paidAt,
         deliveredAt: order.deliveredAt,
+        inviteJobState: inviteJob?.state,
       }}
     />
   )

@@ -2550,7 +2550,7 @@ export async function cancelExpiredOrders(filters: { productId?: string; userId?
             }
             await db.update(orders)
                 .set({ status: 'cancelled' })
-                .where(eq(orders.orderId, expiredOrderId));
+                .where(and(eq(orders.orderId, expiredOrderId), eq(orders.status, 'pending')));
         }
 
         const productIds = Array.from(new Set(candidates.map((row) => row.productId).filter(Boolean)));

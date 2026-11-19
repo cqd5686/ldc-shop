@@ -13,6 +13,7 @@ import { notifyAdminPaymentSuccess } from "@/lib/notifications"
 import { sendOrderEmail } from "@/lib/email"
 import { INFINITE_STOCK, RESERVATION_TTL_MS } from "@/lib/constants"
 import { pullOneCardFromApi } from "@/lib/card-api"
+import { activeInviteProduct, createInviteOrder } from "@/lib/invite-jobs"
 
 const MAX_ORDER_QUANTITY = 10000
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -57,12 +58,17 @@ export async function createOrder(productId: string, quantity: number = 1, email
             id: true,
             name: true,
             price: true,
+            isActive: true,
             purchaseLimit: true,
             isShared: true,
             purchaseQuestions: true
         }
     })
     if (!product) return { success: false, error: 'buy.productNotFound' }
+    const needsInvite = product.id === await activeInviteProduct()
+    if (needsInvite && !product.isActive) return { success: false, error: 'buy.productNotFound' }
+    if (needsInvite && !user?.id) return { success: false, error: 'buy.loginToBuy' }
+    if (needsInvite && quantity !== 1) return { success: false, error: 'buy.invalidQuantity' }
 
     if (product.purchaseQuestions) {
         try {
@@ -155,13 +161,14 @@ export async function createOrder(productId: string, quantity: number = 1, email
         ])
     }
 
-    let stock = await getAvailableStock()
-    if (stock < quantity) {
-        await runStockCleanupFallback()
-        stock = await getAvailableStock()
+    if (!needsInvite) {
+        let stock = await getAvailableStock()
+        if (stock < quantity) {
+            await runStockCleanupFallback()
+            stock = await getAvailableStock()
+        }
+        if (stock < quantity) return { success: false, error: 'buy.outOfStock' }
     }
-
-    if (stock < quantity) return { success: false, error: 'buy.outOfStock' }
 
     // 3. Check Purchase Limit
     if (product.purchaseLimit && product.purchaseLimit > 0) {
@@ -494,7 +501,18 @@ export async function createOrder(productId: string, quantity: number = 1, email
     }
 
     try {
-        await reserveAndCreate();
+        if (needsInvite && user?.id) {
+            if (!Number.isFinite(finalAmount) || (finalAmount <= 0 && pointsToUse <= 0)) {
+                return { success: false, error: 'buy.productNotFound' }
+            }
+            await createInviteOrder({
+                orderId, productId, productName: product.name, amount: finalAmount,
+                email: resolvedContactInfo, userId: user.id,
+                username: session?.user?.username || user.name || null, points: pointsToUse,
+            })
+        } else {
+            await reserveAndCreate()
+        }
         try {
             await recalcProductAggregates(productId)
         } catch {

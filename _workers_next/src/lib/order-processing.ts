@@ -6,6 +6,7 @@ import { notifyAdminPaymentSuccess } from "@/lib/notifications";
 import { sendOrderEmail } from "@/lib/email";
 import { recalcProductAggregates, createUserNotification } from "@/lib/db/queries";
 import { pullOneCardFromApi } from "@/lib/card-api";
+import { getInviteJob, queuePaidInvite } from "@/lib/invite-jobs";
 import { RESERVATION_TTL_MS } from "@/lib/constants";
 import { updateTag } from "next/cache";
 import { after } from "next/server";
@@ -30,7 +31,7 @@ export async function processOrderFulfillment(orderId: string, paidAmount: numbe
     const orderMoney = parseFloat(order.amount);
 
     // Allow small float epsilon difference
-    if (Math.abs(paidAmount - orderMoney) > 0.01) {
+    if (!Number.isFinite(paidAmount) || !Number.isFinite(orderMoney) || Math.abs(paidAmount - orderMoney) > 0.01) {
         throw new Error(`Amount mismatch! Order: ${orderMoney}, Paid: ${paidAmount}`);
     }
 
@@ -47,6 +48,12 @@ export async function processOrderFulfillment(orderId: string, paidAmount: numbe
             // best effort
         }
     };
+
+    if (await getInviteJob(orderId, order.productId)) {
+        const queued = await queuePaidInvite(orderId, tradeNo)
+        if (queued) await refreshAggregates()
+        return { success: true, status: queued ? 'processed' : 'already_processed' }
+    }
 
     const notifyUserDelivered = async (productName: string | null | undefined) => {
         if (!order.userId) return

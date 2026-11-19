@@ -63,6 +63,7 @@ interface Review {
 interface BuyContentProps {
     product: Product
     stockCount: number
+    inviteProductId?: string | null
     lockedStockCount?: number
     isLoggedIn: boolean
     reviews?: Review[]
@@ -77,6 +78,7 @@ interface BuyContentProps {
 export function BuyContent({
     product,
     stockCount,
+    inviteProductId,
     lockedStockCount = 0,
     isLoggedIn,
     reviews = [],
@@ -271,15 +273,16 @@ export function BuyContent({
         toast.error(t('buy.shareFailed'))
     }
 
+    const onDemand = displayProduct.id === inviteProductId
     const hasUnlimitedStock = displayStock >= INFINITE_STOCK
-    const hasStock = displayStock > 0 || hasUnlimitedStock
-    const maxStock = hasUnlimitedStock ? INFINITE_STOCK : (displayStock - displayLocked)
+    const hasStock = onDemand || displayStock > 0 || hasUnlimitedStock
+    const maxStock = onDemand ? 1 : hasUnlimitedStock ? INFINITE_STOCK : (displayStock - displayLocked)
     const maxSelectableQuantity = displayProduct.purchaseLimit && displayProduct.purchaseLimit > 0
         ? Math.min(maxStock, displayProduct.purchaseLimit)
         : maxStock
     const priceValue = Number(displayProduct.price)
     const compareAtPriceValue = displayProduct.compareAtPrice ? Number(displayProduct.compareAtPrice) : null
-    const stockLabel = hasUnlimitedStock
+    const stockLabel = onDemand ? t('common.inStock') : hasUnlimitedStock
         ? `${t('common.stock')}: ${t('common.unlimited')}`
         : (displayStock > 0 ? `${t('common.stock')}: ${displayStock}` : t('common.outOfStock'))
     const showReviewSummary = !metaLoading && reviewCountState > 0

@@ -7,12 +7,14 @@ import { revalidatePath, updateTag } from "next/cache"
 import { checkAdmin } from "@/actions/admin"
 import { recalcProductAggregates, recalcProductAggregatesForMany, createUserNotification } from "@/lib/db/queries"
 import { pullOneCardFromApi } from "@/lib/card-api"
+import { deliverInvite, getInviteJob } from "@/lib/invite-jobs"
 
 export async function markOrderPaid(orderId: string) {
   await checkAdmin()
   if (!orderId) throw new Error("Missing order id")
 
   const order = await db.query.orders.findFirst({ where: eq(orders.orderId, orderId), columns: { productId: true } })
+  if (order && await getInviteJob(orderId, order.productId)) throw new Error("Payment must be confirmed by the gateway")
   await db.update(orders).set({
     status: 'paid',
     paidAt: new Date(),
@@ -33,6 +35,11 @@ export async function markOrderPaid(orderId: string) {
   } catch {
     // best effort
   }
+}
+
+export async function manuallyDeliverInvite(orderId: string, link: string, expiresAt: number) {
+  await checkAdmin()
+  return deliverInvite(orderId, link, expiresAt)
 }
 
 export async function markOrderDelivered(orderId: string) {

@@ -3,6 +3,7 @@ import { getActiveAnnouncement } from "@/actions/settings";
 import { auth } from "@/lib/auth";
 import { HomeContent } from "@/components/home-content";
 import { INFINITE_STOCK } from "@/lib/constants";
+import { activeInviteProduct } from "@/lib/invite-jobs";
 
 const PAGE_SIZE = 24;
 
@@ -59,6 +60,7 @@ export default async function Home({
 
   const allProductIds = products.flatMap((p: any) => p.allVariantIds && p.allVariantIds.length > 1 ? p.allVariantIds : [p.id]);
   const liveStats = await getLiveCardStats(allProductIds).catch(() => new Map());
+  const inviteProductId = await activeInviteProduct();
 
   const productsWithRatings = products.map((p: any) => {
     const isGroup = p.allVariantIds && p.allVariantIds.length > 1;
@@ -88,7 +90,8 @@ export default async function Home({
 
     return {
       ...p,
-      stockCount: stockTotal,
+      stockCount: p.id === inviteProductId ? Math.max(stockTotal, 1) : stockTotal,
+      inviteOnDemand: p.id === inviteProductId,
       soldCount: isGroup ? (p.totalSold || 0) : (p.sold || 0),
       isHot: isGroup ? (p.groupHot || false) : p.isHot,
       descriptionPlain: stripMarkdown(p.description || ''),

@@ -58,7 +58,7 @@ class D1Proxy {
     }
 }
 
-async function getD1() {
+export async function getD1() {
     const phase = process.env.NEXT_PHASE;
     if (phase === PHASE_PRODUCTION_BUILD || phase === PHASE_EXPORT) {
         // Build-time fallback to avoid hard failures when D1 bindings are unavailable.

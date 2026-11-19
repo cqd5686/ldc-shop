@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cancelExpiredOrders, cleanupExpiredCardsIfNeeded } from "@/lib/db/queries";
+import { notifyManualInvites } from "@/lib/invite-jobs";
 
 const CRON_TOKEN_HEADER = "x-cron-cleanup-token";
 const CARD_CLEANUP_THROTTLE_MS = 60 * 1000;
@@ -33,10 +34,12 @@ export async function POST(request: Request) {
     }
 
     const startedAt = Date.now();
-    const [cardsResult, ordersResult] = await Promise.allSettled([
+    const [cardsResult, ordersResult, invites] = await Promise.allSettled([
         cleanupExpiredCardsIfNeeded(CARD_CLEANUP_THROTTLE_MS),
         cancelExpiredOrders(),
+        notifyManualInvites(),
     ]);
+    if (invites.status === "rejected") console.error("[cron-cleanup] invite jobs:", invites.reason);
 
     const durationMs = Date.now() - startedAt;
 

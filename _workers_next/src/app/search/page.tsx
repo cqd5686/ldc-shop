@@ -3,6 +3,7 @@ import { SearchContent } from "@/components/search-content"
 import { unstable_noStore } from "next/cache"
 import { auth } from "@/lib/auth"
 import { INFINITE_STOCK } from "@/lib/constants"
+import { activeInviteProduct } from "@/lib/invite-jobs"
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   if (!value) return undefined
@@ -36,6 +37,7 @@ export default async function SearchPage(props: {
 
   const allSearchIds = result.items.flatMap((p: any) => p.allVariantIds && p.allVariantIds.length > 1 ? p.allVariantIds : [p.id])
   const liveStats = await getLiveCardStats(allSearchIds).catch(() => new Map())
+  const inviteProductId = await activeInviteProduct()
 
   return (
     <SearchContent
@@ -76,7 +78,7 @@ export default async function SearchPage(props: {
           image: p.image,
           category: p.category,
           isHot: isGroup ? (p.groupHot || false) : (p.isHot ?? false),
-          stockCount,
+          stockCount: p.id === inviteProductId ? Math.max(stockCount, 1) : stockCount,
           soldCount: isGroup ? (p.totalSold || 0) : (p.sold || 0)
         }
       })}

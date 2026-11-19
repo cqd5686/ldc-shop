@@ -6,6 +6,7 @@ import { notFound } from "next/navigation"
 import { cookies } from "next/headers"
 import { OrderContent } from "@/components/order-content"
 import { getProductVariantLabels } from "@/lib/db/queries"
+import { getInviteJob } from "@/lib/invite-jobs"
 
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params
@@ -27,6 +28,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
     const cookieStore = await cookies()
     const pending = cookieStore.get('ldc_pending_order')
     if (pending?.value === id) canViewKey = true
+    const inviteJob = await getInviteJob(id, order.productId)
+    if (inviteJob) canViewKey = !!user?.id && user.id === order.userId
 
     // Refund request status (best effort)
     let refundRequest: any = null
@@ -53,7 +56,9 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 productVariantLabel,
                 amount: order.amount,
                 status: order.status || 'pending',
-                cardKey: order.cardKey,
+                cardKey: canViewKey ? order.cardKey : null,
+                inviteOrder: !!inviteJob,
+                inviteExpiresAt: canViewKey ? inviteJob?.expires_at : undefined,
                 payee: order.payee,
                 createdAt: order.createdAt,
                 paidAt: order.paidAt

@@ -3,6 +3,7 @@ import { orders, cards } from "@/lib/db/schema";
 import { md5 } from "@/lib/crypto";
 import { eq, sql } from "drizzle-orm";
 import { withOrderColumnFallback } from "@/lib/db/queries";
+import { INVITE_PRODUCT_ID } from "@/lib/invite-jobs";
 
 const LOG_NOTIFY_DETAILS = process.env.NODE_ENV !== 'production';
 
@@ -70,7 +71,7 @@ async function processNotify(params: Record<string, any>) {
             const orderMoney = parseFloat(order.amount);
 
             // Allow small float epsilon difference
-            if (Math.abs(notifyMoney - orderMoney) > 0.01) {
+            if (!Number.isFinite(notifyMoney) || !Number.isFinite(orderMoney) || Math.abs(notifyMoney - orderMoney) > 0.01) {
                 console.error(`[Notify] Amount mismatch! Order: ${orderMoney}, Notify: ${notifyMoney}`);
                 return new Response('fail', { status: 400 });
             }
@@ -88,6 +89,9 @@ async function processNotify(params: Record<string, any>) {
                     // If shared validation fails (amount mismatch), processOrderFulfillment throws.
                     if (e.message.includes('Amount mismatch')) {
                         return new Response('fail', { status: 400 });
+                    }
+                    if (order.productId === INVITE_PRODUCT_ID) {
+                        return new Response('fail', { status: 500 });
                     }
                 }
             }
