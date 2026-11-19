@@ -6,7 +6,7 @@ import { processOrderFulfillment } from "@/lib/order-processing"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { orders, cards } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { withOrderColumnFallback, recalcProductAggregates } from "@/lib/db/queries"
 import { cookies } from "next/headers"
 import { updateTag } from "next/cache"
@@ -84,15 +84,16 @@ export async function cancelPendingOrder(orderId: string) {
     if (order.status !== 'pending') return { success: false, error: 'order.cannotCancel' }
 
     try {
+        const [cancelled] = await db.update(orders)
+            .set({ status: 'cancelled' })
+            .where(and(eq(orders.orderId, orderId), eq(orders.status, 'pending')))
+            .returning({ orderId: orders.orderId })
+        if (!cancelled) return { success: false, error: 'order.cannotCancel' }
+
         // Release reserved cards
         await db.update(cards)
             .set({ reservedOrderId: null, reservedAt: null })
             .where(eq(cards.reservedOrderId, orderId))
-
-        // Update order status
-        await db.update(orders)
-            .set({ status: 'cancelled' })
-            .where(eq(orders.orderId, orderId))
 
         revalidatePath(`/order/${orderId}`)
         revalidatePath('/orders')
