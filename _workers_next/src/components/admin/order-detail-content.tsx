@@ -131,6 +131,10 @@ export function AdminOrderDetailContent({ order }: { order: any }) {
         <Card>
           <CardHeader><CardTitle>{t('admin.orders.manualInviteDelivery')}</CardTitle></CardHeader>
           <CardContent>
+            <p className="mb-4 text-sm text-muted-foreground">
+              {t(order.inviteManualReason === 'uncertain' ? 'admin.orders.inviteUncertain' : 'admin.orders.inviteAccountsUnavailable')}
+              {" "}{t(order.inviteAlertSent ? 'admin.orders.inviteAlertSent' : 'admin.orders.inviteAlertPending')}
+            </p>
             <form className="space-y-4" onSubmit={submitInvite}>
               <div className="space-y-2">
                 <Label htmlFor="invite-link">{t('admin.orders.inviteLink')}</Label>

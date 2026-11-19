@@ -100,42 +100,49 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
 
     // Check status on mount and polling
     useEffect(() => {
-        if (order.status !== 'pending') return
+        if (order.status !== 'pending' && !(order.inviteOrder && order.status === 'cancelled')) return
 
         let mounted = true
         let intervalId: NodeJS.Timeout
+        let checking = false
 
         const check = async () => {
+            if (checking || document.visibilityState !== 'visible') return
+            checking = true
             try {
                 const result = await checkOrderStatus(order.orderId)
                 if (result.success && (result.status === 'paid' || result.status === 'delivered') && mounted) {
+                    clearInterval(intervalId)
                     toast.success(t('order.paymentSuccess'))
                     router.refresh()
                 }
             } catch (e) {
                 console.error("Auto check failed", e)
+            } finally {
+                checking = false
             }
         }
 
-        // Check immediately
-        check()
-
-        // Poll every 3s for 1 minute (20 times)
+        // Invite orders can settle after the original payment check window.
+        const intervalMs = order.inviteOrder ? 5000 : 3000
+        const maxAttempts = order.inviteOrder ? 60 : 20
         let attempts = 0
         intervalId = setInterval(() => {
-            if (attempts > 20) {
+            if (attempts >= maxAttempts) {
                 clearInterval(intervalId)
                 return
             }
+            if (document.visibilityState !== 'visible') return
             attempts++
             check()
-        }, 3000)
+        }, intervalMs)
+        check()
 
         return () => {
             mounted = false
             clearInterval(intervalId)
         }
-    }, [order.status, order.orderId, router, t])
+    }, [order.status, order.orderId, order.inviteOrder, router, t])
 
     return (
         <main className="container py-12 max-w-2xl">

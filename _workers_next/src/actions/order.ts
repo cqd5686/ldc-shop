@@ -10,6 +10,7 @@ import { and, eq } from "drizzle-orm"
 import { withOrderColumnFallback, recalcProductAggregates } from "@/lib/db/queries"
 import { cookies } from "next/headers"
 import { updateTag } from "next/cache"
+import { INVITE_PRODUCT_ID } from "@/lib/invite-jobs"
 
 export async function checkOrderStatus(orderId: string) {
     const session = await auth()
@@ -19,26 +20,28 @@ export async function checkOrderStatus(orderId: string) {
     const order = await withOrderColumnFallback(async () => {
         return await db.query.orders.findFirst({
             where: eq(orders.orderId, orderId),
-            columns: { userId: true, status: true, amount: true, currentPaymentId: true }
+            columns: { userId: true, productId: true, status: true, amount: true, currentPaymentId: true }
         })
     })
 
     if (!order) return { success: false, error: 'Order not found' }
-    if (order.status === 'paid' || order.status === 'delivered') {
-        return { success: true, status: order.status }
-    }
-
     const cookieStore = await cookies()
     const pending = cookieStore.get('ldc_pending_order')?.value
     const hasPendingCookie = pending === orderId
 
     // Allow checking if user owns it OR if they have the pending cookie
+    if (order.productId === INVITE_PRODUCT_ID && order.userId !== session.user.id) {
+        return { success: false, error: 'Unauthorized' }
+    }
     if (order.userId) {
         if (order.userId !== session.user.id && !hasPendingCookie) {
             return { success: false, error: 'Unauthorized' }
         }
     } else if (!hasPendingCookie) {
         return { success: false, error: 'Unauthorized' }
+    }
+    if (order.status === 'paid' || order.status === 'delivered') {
+        return { success: true, status: order.status }
     }
 
     try {

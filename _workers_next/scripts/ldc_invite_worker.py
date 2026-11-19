@@ -275,12 +275,14 @@ def flush_reports(db, token):
             if kind == "deliver" and expiry > time.time() * 1000:
                 try:
                     api(token, "deliver", **job, link=link, expiresAt=expiry)
+                    print("邀请码已交付", flush=True)
                 except requests.HTTPError as exc:
                     if exc.response.status_code != 422:
                         raise
                     api(token, "manual", **job, reason="uncertain")
             else:
                 api(token, "manual", **job, reason="unavailable" if kind == "unavailable" else "uncertain")
+                print("订单已转人工发货", flush=True)
         except JobClosed:
             pass
         db.execute("DELETE FROM reports WHERE order_id = ?", (order_id,))
@@ -292,6 +294,7 @@ def work(db, token):
     job = api(token, "claim").get("job")
     if not job:
         return
+    print("已领取付款订单，开始发码", flush=True)
     cooldowns = dict(db.execute("SELECT account, until_at FROM cooldowns"))
     for account in ACCOUNTS:
         cookie = os.environ.get(f"LINUXDO_COOKIE_{account}", "").strip()

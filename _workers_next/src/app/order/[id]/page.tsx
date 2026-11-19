@@ -21,15 +21,17 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
 
     // Access Control
     let canViewKey = false
-    const isOwner = !!(user && (user.id === order.userId || user.username === order.username))
+    const inviteJob = await getInviteJob(id, order.productId)
+    const isOwner = inviteJob
+        ? !!user?.id && user.id === order.userId
+        : !!(user && (user.id === order.userId || user.username === order.username))
     if (isOwner) canViewKey = true
 
     // Check Cookie
     const cookieStore = await cookies()
     const pending = cookieStore.get('ldc_pending_order')
     if (pending?.value === id) canViewKey = true
-    const inviteJob = await getInviteJob(id, order.productId)
-    if (inviteJob) canViewKey = !!user?.id && user.id === order.userId
+    if (inviteJob && !isOwner) return notFound()
 
     // Refund request status (best effort)
     let refundRequest: any = null

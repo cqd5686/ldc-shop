@@ -37,6 +37,8 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
         paidAt: order.paidAt,
         deliveredAt: order.deliveredAt,
         inviteJobState: inviteJob?.state,
+        inviteManualReason: inviteJob?.state === 'manual' ? inviteJob.reason : undefined,
+        inviteAlertSent: inviteJob?.state === 'manual' && inviteJob.alert_after === null,
       }}
     />
   )

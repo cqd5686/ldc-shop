@@ -14,7 +14,13 @@ const REASONS = {
     uncertain: "发码结果未知，请先在 L 站核对",
 }
 type Reason = keyof typeof REASONS
-type Job = { order_id: string, state: string, expires_at: number | null, reason: Reason | null }
+type Job = {
+    order_id: string
+    state: string
+    expires_at: number | null
+    reason: Reason | null
+    alert_after: number | null
+}
 type Config = { enabled: boolean, tokenHash: string }
 type Order = {
     orderId: string, productId: string, productName: string, amount: number,
@@ -73,7 +79,7 @@ export async function authorizedInviteWorker(request: Request) {
 export async function getInviteJob(orderId: string, productId: string) {
     if (productId !== INVITE_PRODUCT_ID || !(await config())) return null
     const d1 = await inviteDb()
-    return d1.prepare("SELECT order_id, state, expires_at, reason FROM invite_jobs WHERE order_id = ?")
+    return d1.prepare("SELECT order_id, state, expires_at, reason, alert_after FROM invite_jobs WHERE order_id = ?")
         .bind(orderId).first<Job>()
 }
 
