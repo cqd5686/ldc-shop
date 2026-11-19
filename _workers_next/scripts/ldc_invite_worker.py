@@ -1,11 +1,15 @@
 """Qinglong task for paid LDC orders. Only this host uses the Linux DO sessions."""
 
 import datetime as dt
+from contextlib import contextmanager
 import email.utils
 import fcntl
+import json
 import os
 from pathlib import Path
 import re
+import shutil
+import socket
 import sqlite3
 import sys
 import time
@@ -33,6 +37,10 @@ class AccountUnavailable(Exception):
         self.retry_after = retry_after
 
 
+class BrowserRequired(AccountUnavailable):
+    """The direct client received a browser verification page."""
+
+
 class JobClosed(Exception):
     """The shop has already ended this claim."""
 
@@ -51,9 +59,9 @@ def api(token, action, **data):
     return response.json()
 
 
-def cooldown_seconds(response, payload):
+def cooldown_seconds(headers, payload):
     extras = payload.get("extras")
-    values = [response.headers.get("Retry-After")]
+    values = [headers.get("Retry-After")]
     if isinstance(extras, dict):
         values.append(extras.get("wait_seconds"))
     seconds = []
@@ -84,9 +92,12 @@ def valid_session(cookie):
     })
     try:
         response = session.get(f"{LDO}/session/csrf", timeout=TIMEOUT, allow_redirects=False)
+        if response.headers.get("CF-Mitigated") == "challenge":
+            session.close()
+            raise BrowserRequired
         if response.status_code == 429:
             session.close()
-            raise AccountUnavailable(cooldown_seconds(response, {}))
+            raise AccountUnavailable(cooldown_seconds(response.headers, {}))
         csrf = response.json().get("csrf") if response.status_code == 200 else None
         if csrf:
             session.headers["X-CSRF-Token"] = csrf
@@ -97,14 +108,18 @@ def valid_session(cookie):
     raise AccountUnavailable
 
 
+def invite_fields(requested_expiry):
+    expires_at = dt.datetime.fromtimestamp(requested_expiry, dt.timezone.utc).isoformat(timespec="seconds")
+    return {"max_redemptions_allowed": "1", "expires_at": expires_at}
+
+
 def generate(session):
     requested_expiry = int(time.time()) + DAY
-    expiry_param = dt.datetime.fromtimestamp(requested_expiry, dt.timezone.utc).isoformat(timespec="seconds")
     try:
         response = session.post(
             f"{LDO}/invites", timeout=TIMEOUT, allow_redirects=False,
             headers={"Origin": LDO, "Discourse-Present": "true", "Discourse-Logged-In": "true"},
-            data={"max_redemptions_allowed": "1", "expires_at": expiry_param},
+            data=invite_fields(requested_expiry),
         )
     except requests.RequestException as exc:
         raise InviteUncertain from exc
@@ -112,13 +127,17 @@ def generate(session):
         payload = response.json()
     except ValueError:
         payload = {}
+    return read_invitation(response.status_code, response.headers, payload, requested_expiry)
+
+
+def read_invitation(status, headers, payload, requested_expiry):
     if not isinstance(payload, dict):
         payload = {}
-    if response.status_code == 429:
-        raise AccountUnavailable(cooldown_seconds(response, payload))
-    if response.status_code in (301, 302, 303, 307, 308, 401, 403, 422):
+    if status == 429:
+        raise AccountUnavailable(cooldown_seconds(headers, payload))
+    if status in (301, 302, 303, 307, 308, 401, 403, 422):
         raise AccountUnavailable
-    if not response.ok:
+    if status < 200 or status >= 300:
         raise InviteUncertain
 
     link = payload.get("link")
@@ -130,6 +149,108 @@ def generate(session):
     if not isinstance(link, str) or not LINK.fullmatch(link) or expires_at <= time.time() * 1000:
         raise InviteUncertain
     return link, expires_at
+
+
+def browser_request(tab, path, fields=None, csrf=None):
+    options = {"credentials": "same-origin", "headers": {"Accept": "application/json"}}
+    if fields:
+        options.update(method="POST")
+        options["headers"].update({
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+            "X-CSRF-Token": csrf,
+            "X-Requested-With": "XMLHttpRequest",
+        })
+    encoded_options = json.dumps(options)
+    expression = f"""(async () => {{
+        if (location.origin !== {json.dumps(LDO)}) return null;
+        const options = {encoded_options};
+        const fields = {json.dumps(fields)};
+        if (fields) options.body = new URLSearchParams(fields);
+        const result = await fetch({json.dumps(path)}, options);
+        let payload = null;
+        if (result.headers.get("content-type")?.includes("json")) payload = await result.json();
+        return {{status: result.status, payload, retryAfter: result.headers.get("retry-after")}};
+    }})()"""
+    output = tab.run_cdp(
+        "Runtime.evaluate", expression=expression, awaitPromise=True, returnByValue=True, _timeout=20,
+    ).get("result", {}).get("value")
+    if not isinstance(output, dict):
+        raise RuntimeError("browser request incomplete")
+    return output
+
+
+@contextmanager
+def browser_account(account):
+    profile = Path(os.environ.get(
+        f"LINUXDO_BROWSER_PROFILE_DIR_{account}", f"/ql/data/config/linuxdo_browser_profiles/{account}",
+    ))
+    browser_path = shutil.which("chromium") or shutil.which("chromium-browser")
+    if not profile.is_dir() or not browser_path:
+        raise AccountUnavailable
+    port = int(os.environ.get(f"LINUXDO_BROWSER_PORT_{account}", str(19220 + ACCOUNTS.index(account))))
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            raise AccountUnavailable
+    except OSError:
+        pass
+
+    ready = False
+    try:
+        from DrissionPage import Chromium, ChromiumOptions
+        from pyvirtualdisplay import Display
+
+        with Display(visible=False, size=(1600, 900)):
+            options = ChromiumOptions().set_user_data_path(str(profile)).set_local_port(port)
+            options.set_browser_path(browser_path).set_timeouts(base=8, page_load=12, script=12)
+            options.set_argument("--no-sandbox").set_argument("--disable-dev-shm-usage")
+            proxy = os.environ.get("LINUXDO_BROWSER_PROXY", "").strip()
+            if proxy:
+                options.set_proxy(proxy)
+            browser = Chromium(options)
+            try:
+                tab = browser.new_tab()
+                tab.get(f"{LDO}/")
+                current = browser_request(tab, "/session/current.json")
+                if current["status"] != 200 or not (current["payload"] or {}).get("current_user"):
+                    raise AccountUnavailable
+                response = browser_request(tab, "/session/csrf")
+                csrf = (response["payload"] or {}).get("csrf")
+                if response["status"] != 200 or not isinstance(csrf, str):
+                    raise AccountUnavailable
+
+                def make_invite():
+                    expiry = int(time.time()) + DAY
+                    try:
+                        result = browser_request(tab, "/invites", invite_fields(expiry), csrf)
+                    except Exception as exc:
+                        raise InviteUncertain from exc
+                    return read_invitation(result["status"], {"Retry-After": result["retryAfter"]}, result["payload"], expiry)
+
+                ready = True
+                yield make_invite
+            finally:
+                try:
+                    browser.quit()
+                except Exception:
+                    pass
+    except (AccountUnavailable, InviteUncertain):
+        raise
+    except Exception as exc:
+        if ready:
+            raise
+        raise AccountUnavailable from exc
+
+
+@contextmanager
+def open_invite_account(account, cookie):
+    try:
+        session = valid_session(cookie)
+    except BrowserRequired:
+        with browser_account(account) as make_invite:
+            yield make_invite
+    else:
+        with session:
+            yield lambda: generate(session)
 
 
 def remember_cooldown(db, account, seconds):
@@ -174,32 +295,24 @@ def work(db, token):
         if not cookie or cooldowns.get(account, 0) > time.time():
             continue
         try:
-            session = valid_session(cookie)
+            with open_invite_account(account, cookie) as make_invite:
+                try:
+                    api(token, "start", **job)
+                except JobClosed:
+                    return
+                save_report(db, job, "uncertain")
+                db.commit()
+                link, expiry = make_invite()
+                remember_cooldown(db, account, COOLDOWN)
+                save_report(db, job, "deliver", link, expiry)
+                db.commit()
+            break
         except AccountUnavailable as exc:
             if exc.retry_after:
                 remember_cooldown(db, account, exc.retry_after)
-                db.commit()
-            continue
-        with session:
-            try:
-                api(token, "start", **job)
-            except JobClosed:
-                return
-            save_report(db, job, "uncertain")
+            db.execute("DELETE FROM reports WHERE order_id = ?", (job["orderId"],))
             db.commit()
-            try:
-                link, expiry = generate(session)
-            except AccountUnavailable as exc:
-                if exc.retry_after:
-                    remember_cooldown(db, account, exc.retry_after)
-                db.execute("DELETE FROM reports WHERE order_id = ?", (job["orderId"],))
-                db.commit()
-                continue
-            except InviteUncertain:
-                break
-            remember_cooldown(db, account, COOLDOWN)
-            save_report(db, job, "deliver", link, expiry)
-            db.commit()
+        except InviteUncertain:
             break
     else:
         save_report(db, job, "unavailable")
