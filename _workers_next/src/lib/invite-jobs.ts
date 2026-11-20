@@ -3,8 +3,9 @@ import type { D1Database } from "@cloudflare/workers-types"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getD1 } from "@/lib/db"
 import { getSetting, setSetting, recalcProductAggregates, createUserNotification } from "@/lib/db/queries"
-import { sendTelegramMessage } from "@/lib/notifications"
+import { notifyAdminPaymentSuccess, sendTelegramMessage } from "@/lib/notifications"
 import { revalidatePath, revalidateTag } from "next/cache"
+import { after } from "next/server"
 
 export const INVITE_PRODUCT_ID = "L_Invite"
 export function getInviteShopOrigin() {
@@ -38,6 +39,35 @@ type Config = { enabled: boolean, tokenHash: string }
 type Order = {
     orderId: string, productId: string, productName: string, amount: number,
     email: string | null, userId: string, username: string | null, points: number,
+}
+
+function notifyInvitePaymentAfter(orderId: string, d1: D1Database) {
+    after(async () => {
+        try {
+            const order = await d1.prepare(`
+                SELECT o.product_name, o.amount, o.email, o.trade_no, o.points_used,
+                       COALESCE(NULLIF(o.username, ''), u.username) AS username
+                FROM orders o LEFT JOIN login_users u ON u.user_id = o.user_id
+                WHERE o.order_id = ? AND o.paid_at IS NOT NULL
+            `).bind(orderId).first<{
+                product_name: string, amount: string, email: string | null,
+                trade_no: string | null, points_used: number, username: string | null,
+            }>()
+            if (!order) return
+            const result = await notifyAdminPaymentSuccess({
+                orderId,
+                productName: order.product_name,
+                amount: order.trade_no === "POINTS_REDEMPTION"
+                    ? `${order.points_used} (积分)` : order.amount,
+                email: order.email,
+                username: order.username,
+                tradeNo: order.trade_no,
+            })
+            if (!result.success) console.warn("[Invite payment] Notification not sent")
+        } catch {
+            console.error("[Invite payment] Payment notification failed")
+        }
+    })
 }
 
 let init: Promise<unknown> | undefined
@@ -116,6 +146,7 @@ export async function createInviteOrder(order: Order) {
         .bind(order.points, order.userId, order.points)
     const results = await d1.batch(order.points > 0 ? [debit, insert, job] : [insert, job])
     if (results[results.length - 1].meta.changes !== 1) throw new Error("insufficient_points")
+    if (paid) notifyInvitePaymentAfter(order.orderId, d1)
 }
 
 export async function queuePaidInvite(orderId: string, tradeNo: string) {
@@ -132,7 +163,9 @@ export async function queuePaidInvite(orderId: string, tradeNo: string) {
             WHERE order_id = ? AND state = 'awaiting_payment' AND changes() = 1
         `).bind(now, orderId),
     ])
-    return payment.meta.changes === 1
+    const queued = payment.meta.changes === 1
+    if (queued) notifyInvitePaymentAfter(orderId, d1)
+    return queued
 }
 
 export async function claimInviteJob() {
